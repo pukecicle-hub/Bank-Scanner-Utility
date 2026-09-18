@@ -56,7 +56,7 @@ public class BankScannerPlugin extends Plugin
 	@Override
 	protected void startUp() throws Exception
 	{
-		panel = new BankScannerPanel(config);
+		panel = new BankScannerPanel(config, itemManager);
 		panel.setOnRescan(this::scanBank);
 
 		BufferedImage icon = loadIconSafely();

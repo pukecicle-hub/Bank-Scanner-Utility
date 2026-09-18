@@ -22,45 +22,53 @@ import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
+import javax.swing.JSeparator;
 import javax.swing.JTextField;
+import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.util.AsyncBufferedImage;
 import net.runelite.client.util.LinkBrowser;
 import net.runelite.client.util.QuantityFormatter;
 
 public class BankScannerPanel extends PluginPanel
 {
 	private static final String WIKI_BASE = "https://oldschool.runescape.wiki/w/";
+	private static final int ICON_SIZE = 32;
 
 	private final BankScannerConfig config;
+	private final ItemManager itemManager;
 	private Runnable onRescan;
 
 	private final JTextField searchField = new JTextField();
 	private final JTextField minQtyField = new JTextField("0");
 	private final JTextField minPriceField = new JTextField("0");
 	private final JComboBox<SortMode> sortCombo = new JComboBox<>(SortMode.values());
-	private final JCheckBox ascendingCheck = new JCheckBox("Ascending", true);
+	private final JCheckBox changeOrderCheck = new JCheckBox("Change order", true);
 	private final JCheckBox membersOnlyCheck = new JCheckBox("Members only", false);
 	private final JCheckBox tradeableOnlyCheck = new JCheckBox("Tradeable only", false);
+	private final JCheckBox showHaCheck = new JCheckBox("Show High Alch", false);
 	private final JLabel statusLabel = new JLabel("Open your bank to scan items.");
 	private final JLabel totalLabel = new JLabel("");
 	private final JPanel itemListPanel = new JPanel();
 
 	private List<BankItem> allItems = new ArrayList<>();
 
-	public BankScannerPanel(BankScannerConfig config)
+	public BankScannerPanel(BankScannerConfig config, ItemManager itemManager)
 	{
 		super(false);
 		this.config = config;
+		this.itemManager = itemManager;
 
 		setLayout(new BorderLayout());
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
 
-		// Header
+		// ===== Settings / filters header =====
 		JPanel header = new JPanel();
 		header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
 		header.setBackground(ColorScheme.DARKER_GRAY_COLOR);
@@ -121,25 +129,27 @@ public class BankScannerPanel extends PluginPanel
 		sortRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
 		sortCombo.addActionListener(e -> refreshList());
 		sortRow.add(sortCombo, BorderLayout.CENTER);
-		ascendingCheck.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		ascendingCheck.setForeground(Color.LIGHT_GRAY);
-		ascendingCheck.addActionListener(e -> refreshList());
-		sortRow.add(ascendingCheck, BorderLayout.EAST);
+		changeOrderCheck.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		changeOrderCheck.setForeground(Color.LIGHT_GRAY);
+		changeOrderCheck.setToolTipText("Checked = ascending, unchecked = descending");
+		changeOrderCheck.addActionListener(e -> refreshList());
+		sortRow.add(changeOrderCheck, BorderLayout.EAST);
 		header.add(sortRow);
 		header.add(Box.createVerticalStrut(4));
 
 		// Checkboxes
-		membersOnlyCheck.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		membersOnlyCheck.setForeground(Color.LIGHT_GRAY);
-		membersOnlyCheck.setAlignmentX(Component.LEFT_ALIGNMENT);
+		styleCheck(membersOnlyCheck);
 		membersOnlyCheck.addActionListener(e -> refreshList());
 		header.add(membersOnlyCheck);
 
-		tradeableOnlyCheck.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		tradeableOnlyCheck.setForeground(Color.LIGHT_GRAY);
-		tradeableOnlyCheck.setAlignmentX(Component.LEFT_ALIGNMENT);
+		styleCheck(tradeableOnlyCheck);
 		tradeableOnlyCheck.addActionListener(e -> refreshList());
 		header.add(tradeableOnlyCheck);
+
+		styleCheck(showHaCheck);
+		showHaCheck.setSelected(config.showHaPrice());
+		showHaCheck.addActionListener(e -> refreshList());
+		header.add(showHaCheck);
 
 		header.add(Box.createVerticalStrut(6));
 
@@ -154,9 +164,20 @@ public class BankScannerPanel extends PluginPanel
 		});
 		header.add(refreshBtn);
 
-		add(header, BorderLayout.NORTH);
+		// ===== Divider between settings and list =====
+		JPanel northWrapper = new JPanel(new BorderLayout());
+		northWrapper.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		northWrapper.add(header, BorderLayout.CENTER);
 
-		// Item list
+		JSeparator divider = new JSeparator(SwingConstants.HORIZONTAL);
+		divider.setForeground(new Color(60, 60, 60));
+		divider.setBackground(new Color(60, 60, 60));
+		divider.setBorder(new EmptyBorder(4, 0, 4, 0));
+		northWrapper.add(divider, BorderLayout.SOUTH);
+
+		add(northWrapper, BorderLayout.NORTH);
+
+		// ===== Item list =====
 		itemListPanel.setLayout(new BoxLayout(itemListPanel, BoxLayout.Y_AXIS));
 		itemListPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
 
@@ -165,6 +186,13 @@ public class BankScannerPanel extends PluginPanel
 		scroll.setBorder(BorderFactory.createEmptyBorder());
 		scroll.getVerticalScrollBar().setUnitIncrement(16);
 		add(scroll, BorderLayout.CENTER);
+	}
+
+	private void styleCheck(JCheckBox box)
+	{
+		box.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		box.setForeground(Color.LIGHT_GRAY);
+		box.setAlignmentX(Component.LEFT_ALIGNMENT);
 	}
 
 	public void setOnRescan(Runnable onRescan)
@@ -185,10 +213,11 @@ public class BankScannerPanel extends PluginPanel
 		String search = searchField.getText().trim().toLowerCase();
 		int minQty = parseIntSafe(minQtyField.getText(), 0);
 		int minPrice = parseIntSafe(minPriceField.getText(), 0);
-		boolean asc = ascendingCheck.isSelected();
+		boolean asc = changeOrderCheck.isSelected();
 		SortMode mode = (SortMode) sortCombo.getSelectedItem();
 		boolean membersOnly = membersOnlyCheck.isSelected();
 		boolean tradeableOnly = tradeableOnlyCheck.isSelected();
+		boolean showHa = showHaCheck.isSelected();
 
 		List<BankItem> filtered = allItems.stream()
 			.filter(i -> !config.hidePlaceholders() || !i.isPlaceholder())
@@ -233,7 +262,7 @@ public class BankScannerPanel extends PluginPanel
 		{
 			totalValue += item.getTotalValue();
 			totalQty += item.getQuantity();
-			itemListPanel.add(createItemRow(item));
+			itemListPanel.add(createItemRow(item, showHa));
 		}
 
 		if (filtered.isEmpty())
@@ -252,13 +281,33 @@ public class BankScannerPanel extends PluginPanel
 		itemListPanel.repaint();
 	}
 
-	private JPanel createItemRow(BankItem item)
+	private JPanel createItemRow(BankItem item, boolean showHa)
 	{
-		JPanel row = new JPanel(new BorderLayout(6, 0));
+		JPanel row = new JPanel(new BorderLayout(8, 0));
 		row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		row.setBorder(new EmptyBorder(4, 6, 4, 6));
-		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
 
+		// Item icon on the left
+		JLabel iconLabel = new JLabel();
+		iconLabel.setPreferredSize(new Dimension(ICON_SIZE, ICON_SIZE));
+		iconLabel.setMinimumSize(new Dimension(ICON_SIZE, ICON_SIZE));
+		iconLabel.setHorizontalAlignment(SwingConstants.CENTER);
+		try
+		{
+			AsyncBufferedImage img = itemManager.getImage(item.getId(), item.getQuantity(), false);
+			if (img != null)
+			{
+				img.addTo(iconLabel);
+			}
+		}
+		catch (Exception ignored)
+		{
+			// leave blank if image fails
+		}
+		row.add(iconLabel, BorderLayout.WEST);
+
+		// Text details
 		JPanel text = new JPanel();
 		text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
 		text.setOpaque(false);
@@ -277,7 +326,7 @@ public class BankScannerPanel extends PluginPanel
 		{
 			detail.append("  |  ").append(QuantityFormatter.quantityToStackSize(item.getTotalValue())).append(" total");
 		}
-		if (config.showHaPrice() && item.getHaPrice() > 0)
+		if (showHa && item.getHaPrice() > 0)
 		{
 			detail.append("  |  HA ").append(QuantityFormatter.quantityToStackSize(item.getHaPrice()));
 		}

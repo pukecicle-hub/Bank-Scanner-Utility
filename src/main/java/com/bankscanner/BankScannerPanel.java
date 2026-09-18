@@ -7,13 +7,10 @@ import java.awt.Dimension;
 import java.awt.GridLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
-import javax.inject.Inject;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -39,8 +36,8 @@ public class BankScannerPanel extends PluginPanel
 {
 	private static final String WIKI_BASE = "https://oldschool.runescape.wiki/w/";
 
-	private final BankScannerPlugin plugin;
 	private final BankScannerConfig config;
+	private Runnable onRescan;
 
 	private final JTextField searchField = new JTextField();
 	private final JTextField minQtyField = new JTextField("0");
@@ -55,11 +52,9 @@ public class BankScannerPanel extends PluginPanel
 
 	private List<BankItem> allItems = new ArrayList<>();
 
-	@Inject
-	BankScannerPanel(BankScannerPlugin plugin, BankScannerConfig config)
+	public BankScannerPanel(BankScannerConfig config)
 	{
 		super(false);
-		this.plugin = plugin;
 		this.config = config;
 
 		setLayout(new BorderLayout());
@@ -150,7 +145,13 @@ public class BankScannerPanel extends PluginPanel
 
 		JButton refreshBtn = new JButton("Rescan Bank");
 		refreshBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
-		refreshBtn.addActionListener(e -> plugin.scanBank());
+		refreshBtn.addActionListener(e ->
+		{
+			if (onRescan != null)
+			{
+				onRescan.run();
+			}
+		});
 		header.add(refreshBtn);
 
 		add(header, BorderLayout.NORTH);
@@ -164,6 +165,11 @@ public class BankScannerPanel extends PluginPanel
 		scroll.setBorder(BorderFactory.createEmptyBorder());
 		scroll.getVerticalScrollBar().setUnitIncrement(16);
 		add(scroll, BorderLayout.CENTER);
+	}
+
+	public void setOnRescan(Runnable onRescan)
+	{
+		this.onRescan = onRescan;
 	}
 
 	public void updateItems(List<BankItem> items)
@@ -320,11 +326,7 @@ public class BankScannerPanel extends PluginPanel
 
 	private void openWiki(BankItem item)
 	{
-		// Prefer ID-based lookup when possible; fall back to name
 		String url = WIKI_BASE + "Special:Lookup?type=item&id=" + item.getId();
-		// Name-based also works well:
-		// String encoded = URLEncoder.encode(item.getName().replace(' ', '_'), StandardCharsets.UTF_8);
-		// String url = WIKI_BASE + encoded;
 		LinkBrowser.browse(url);
 	}
 

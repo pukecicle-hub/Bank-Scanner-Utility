@@ -50,35 +50,72 @@ public class BankScannerPlugin extends Plugin
 	@Inject
 	private ClientToolbar clientToolbar;
 
-	@Inject
 	private BankScannerPanel panel;
-
 	private NavigationButton navButton;
-	private boolean bankWasOpen;
 
 	@Override
 	protected void startUp() throws Exception
 	{
-		final BufferedImage icon = ImageUtil.loadImageResource(getClass(), "icon.png");
-		// Fallback if no icon: create a simple one at runtime is not ideal, so we tolerate null later
+		panel = new BankScannerPanel(config);
+		panel.setOnRescan(this::scanBank);
+
+		BufferedImage icon = loadIconSafely();
 
 		navButton = NavigationButton.builder()
 			.tooltip("Bank Scanner")
-			.icon(icon != null ? icon : new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB))
+			.icon(icon)
 			.priority(5)
 			.panel(panel)
 			.build();
 
 		clientToolbar.addNavigation(navButton);
-		log.debug("Bank Scanner started");
+		log.info("Bank Scanner started");
+	}
+
+	/**
+	 * Never throws — returns a blank image if the resource is missing.
+	 */
+	private BufferedImage loadIconSafely()
+	{
+		// Paths relative to the class package and absolute classpath root
+		String[] paths = {
+			"icon.png",                 // com/bankscanner/icon.png
+			"/icon.png",                // root of jar
+			"/com/bankscanner/icon.png"
+		};
+
+		for (String path : paths)
+		{
+			try
+			{
+				BufferedImage img = ImageUtil.loadImageResource(BankScannerPlugin.class, path);
+				if (img != null)
+				{
+					return img;
+				}
+			}
+			catch (Throwable t)
+			{
+				// ImageUtil throws IllegalArgumentException when the resource is missing
+			}
+		}
+
+		log.warn("Plugin icon not found — using blank icon");
+		return new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
 	}
 
 	@Override
 	protected void shutDown() throws Exception
 	{
-		clientToolbar.removeNavigation(navButton);
-		panel.updateItems(null);
-		log.debug("Bank Scanner stopped");
+		if (navButton != null)
+		{
+			clientToolbar.removeNavigation(navButton);
+		}
+		if (panel != null)
+		{
+			panel.updateItems(null);
+		}
+		log.info("Bank Scanner stopped");
 	}
 
 	@Subscribe
@@ -87,8 +124,10 @@ public class BankScannerPlugin extends Plugin
 		if (event.getGameState() == GameState.LOGIN_SCREEN
 			|| event.getGameState() == GameState.HOPPING)
 		{
-			panel.updateItems(null);
-			bankWasOpen = false;
+			if (panel != null)
+			{
+				panel.updateItems(null);
+			}
 		}
 	}
 
@@ -97,7 +136,6 @@ public class BankScannerPlugin extends Plugin
 	{
 		if (event.getContainerId() == InventoryID.BANK.getId())
 		{
-			// Bank contents changed while open (deposit/withdraw)
 			if (isBankOpen())
 			{
 				scanBank();
@@ -108,7 +146,6 @@ public class BankScannerPlugin extends Plugin
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event)
 	{
-		// Bank interface group is 12
 		if (event.getGroupId() == 12)
 		{
 			clientThread.invokeLater(() ->
@@ -116,18 +153,11 @@ public class BankScannerPlugin extends Plugin
 				if (isBankOpen())
 				{
 					scanBank();
-					if (config.autoOpenPanel() && navButton != null)
-					{
-						// User can click the nav button; auto-expand is handled by client UI when panel is set
-					}
 				}
 			});
 		}
 	}
 
-	/**
-	 * Public so the panel "Rescan" button can call it.
-	 */
 	public void scanBank()
 	{
 		clientThread.invoke(() ->
@@ -164,14 +194,11 @@ public class BankScannerPlugin extends Plugin
 					continue;
 				}
 
-				// Canonical (un-noted / un-placeholder) ID for pricing
 				int canonicalId = itemManager.canonicalize(id);
 				int gePrice = itemManager.getItemPrice(canonicalId);
 				int haPrice = comp.getHaPrice();
 
-				// Placeholder items have placeholderTemplateId == 14401
-				boolean placeholder = comp.getPlaceholderTemplateId() == 14401
-					|| qty == 0;
+				boolean placeholder = comp.getPlaceholderTemplateId() == 14401 || qty == 0;
 
 				String name = comp.getMembersName();
 				if (name == null || name.isEmpty())
@@ -191,18 +218,19 @@ public class BankScannerPlugin extends Plugin
 				));
 			}
 
-			panel.updateItems(items);
+			if (panel != null)
+			{
+				panel.updateItems(items);
+			}
 			log.debug("Bank scanned: {} stacks", items.size());
 		});
 	}
 
 	private boolean isBankOpen()
 	{
-		// Interface group 12 = bank; ComponentID.BANK_ITEM_CONTAINER is the items area
 		Widget bankContainer = client.getWidget(ComponentID.BANK_ITEM_CONTAINER);
 		if (bankContainer == null)
 		{
-			// Fallback for newer InterfaceID style if ComponentID is stripped in future
 			bankContainer = client.getWidget(12, 12);
 		}
 		return bankContainer != null && !bankContainer.isHidden();

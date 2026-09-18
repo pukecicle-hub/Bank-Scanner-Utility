@@ -62,4 +62,4 @@ This launches RuneLite in developer mode with the plugin loaded.
 
 ## License
 
-BSD 2-Clause (same as the RuneLite example plugin).
+BSD 2-Clause.

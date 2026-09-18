@@ -53,6 +53,7 @@ public class BankScannerPanel extends PluginPanel
 	private final JCheckBox membersOnlyCheck = new JCheckBox("Members only", false);
 	private final JCheckBox tradeableOnlyCheck = new JCheckBox("Tradeable only", false);
 	private final JCheckBox showHaCheck = new JCheckBox("Show High Alch", false);
+	private final JCheckBox hideUntradeablesCheck = new JCheckBox("Hide untradeables", false);
 	private final JLabel statusLabel = new JLabel("Open your bank to scan items.");
 	private final JLabel totalLabel = new JLabel("");
 	private final JPanel itemListPanel = new JPanel();
@@ -137,20 +138,30 @@ public class BankScannerPanel extends PluginPanel
 		header.add(sortRow);
 		header.add(Box.createVerticalStrut(4));
 
-		// Checkboxes
+		// Checkboxes in 2x2 grid
+		JPanel checkGrid = new JPanel(new GridLayout(2, 2, 4, 2));
+		checkGrid.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		checkGrid.setAlignmentX(Component.LEFT_ALIGNMENT);
+		checkGrid.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
+
 		styleCheck(membersOnlyCheck);
 		membersOnlyCheck.addActionListener(e -> refreshList());
-		header.add(membersOnlyCheck);
+		checkGrid.add(membersOnlyCheck);
 
 		styleCheck(tradeableOnlyCheck);
 		tradeableOnlyCheck.addActionListener(e -> refreshList());
-		header.add(tradeableOnlyCheck);
+		checkGrid.add(tradeableOnlyCheck);
 
 		styleCheck(showHaCheck);
 		showHaCheck.setSelected(config.showHaPrice());
 		showHaCheck.addActionListener(e -> refreshList());
-		header.add(showHaCheck);
+		checkGrid.add(showHaCheck);
 
+		styleCheck(hideUntradeablesCheck);
+		hideUntradeablesCheck.addActionListener(e -> refreshList());
+		checkGrid.add(hideUntradeablesCheck);
+
+		header.add(checkGrid);
 		header.add(Box.createVerticalStrut(6));
 
 		JButton refreshBtn = new JButton("Rescan Bank");
@@ -218,6 +229,7 @@ public class BankScannerPanel extends PluginPanel
 		boolean membersOnly = membersOnlyCheck.isSelected();
 		boolean tradeableOnly = tradeableOnlyCheck.isSelected();
 		boolean showHa = showHaCheck.isSelected();
+		boolean hideUntradeables = hideUntradeablesCheck.isSelected();
 
 		List<BankItem> filtered = allItems.stream()
 			.filter(i -> !config.hidePlaceholders() || !i.isPlaceholder())
@@ -226,6 +238,7 @@ public class BankScannerPanel extends PluginPanel
 			.filter(i -> i.getGePrice() >= minPrice)
 			.filter(i -> !membersOnly || i.isMembers())
 			.filter(i -> !tradeableOnly || i.isTradeable())
+			.filter(i -> !hideUntradeables || i.isTradeable())
 			.collect(Collectors.toList());
 
 		Comparator<BankItem> cmp;
@@ -318,17 +331,30 @@ public class BankScannerPanel extends PluginPanel
 
 		StringBuilder detail = new StringBuilder();
 		detail.append("x").append(QuantityFormatter.formatNumber(item.getQuantity()));
-		if (config.showGePrice() && item.getGePrice() > 0)
+
+		// When High Alch is checked, show HA unit price instead of GE unit price
+		if (showHa)
 		{
-			detail.append("  |  ").append(QuantityFormatter.quantityToStackSize(item.getGePrice())).append(" ea");
+			if (item.getHaPrice() > 0)
+			{
+				detail.append("  |  ").append(QuantityFormatter.quantityToStackSize(item.getHaPrice())).append(" ea");
+			}
+			if (config.showTotalValue() && item.getHaPrice() > 0)
+			{
+				long haTotal = (long) item.getQuantity() * item.getHaPrice();
+				detail.append("  |  ").append(QuantityFormatter.quantityToStackSize(haTotal)).append(" total");
+			}
 		}
-		if (config.showTotalValue() && item.getTotalValue() > 0)
+		else
 		{
-			detail.append("  |  ").append(QuantityFormatter.quantityToStackSize(item.getTotalValue())).append(" total");
-		}
-		if (showHa && item.getHaPrice() > 0)
-		{
-			detail.append("  |  HA ").append(QuantityFormatter.quantityToStackSize(item.getHaPrice()));
+			if (config.showGePrice() && item.getGePrice() > 0)
+			{
+				detail.append("  |  ").append(QuantityFormatter.quantityToStackSize(item.getGePrice())).append(" ea");
+			}
+			if (config.showTotalValue() && item.getTotalValue() > 0)
+			{
+				detail.append("  |  ").append(QuantityFormatter.quantityToStackSize(item.getTotalValue())).append(" total");
+			}
 		}
 
 		JLabel detailLabel = new JLabel(detail.toString());

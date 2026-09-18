@@ -49,11 +49,12 @@ public class BankScannerPanel extends PluginPanel
 	private final JTextField minQtyField = new JTextField("0");
 	private final JTextField minPriceField = new JTextField("0");
 	private final JComboBox<SortMode> sortCombo = new JComboBox<>(SortMode.values());
-	private final JCheckBox changeOrderCheck = new JCheckBox("Change order", true);
+	private final JButton sortOrderBtn = new JButton("Ascending");
+	private boolean sortAscending = true;
 	private final JCheckBox membersOnlyCheck = new JCheckBox("Members only", false);
 	private final JCheckBox tradeableOnlyCheck = new JCheckBox("Tradeable only", false);
 	private final JCheckBox showHaCheck = new JCheckBox("Show High Alch", false);
-	private final JCheckBox hideUntradeablesCheck = new JCheckBox("Hide untradeables", false);
+	private final JCheckBox onlyUntradeableCheck = new JCheckBox("Only untradeable", false);
 	private final JLabel statusLabel = new JLabel("Open your bank to scan items.");
 	private final JLabel totalLabel = new JLabel("");
 	private final JPanel itemListPanel = new JPanel();
@@ -123,19 +124,23 @@ public class BankScannerPanel extends PluginPanel
 		header.add(filterRow);
 		header.add(Box.createVerticalStrut(4));
 
-		// Sort
-		JPanel sortRow = new JPanel(new BorderLayout(4, 0));
-		sortRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		sortRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-		sortRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+		// Sort dropdown
+		sortCombo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+		sortCombo.setAlignmentX(Component.LEFT_ALIGNMENT);
 		sortCombo.addActionListener(e -> refreshList());
-		sortRow.add(sortCombo, BorderLayout.CENTER);
-		changeOrderCheck.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		changeOrderCheck.setForeground(Color.LIGHT_GRAY);
-		changeOrderCheck.setToolTipText("Checked = ascending, unchecked = descending");
-		changeOrderCheck.addActionListener(e -> refreshList());
-		sortRow.add(changeOrderCheck, BorderLayout.EAST);
-		header.add(sortRow);
+		header.add(sortCombo);
+		header.add(Box.createVerticalStrut(4));
+
+		// Sort order button (toggles Ascending / Descending)
+		sortOrderBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+		sortOrderBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+		sortOrderBtn.addActionListener(e ->
+		{
+			sortAscending = !sortAscending;
+			sortOrderBtn.setText(sortAscending ? "Ascending" : "Descending");
+			refreshList();
+		});
+		header.add(sortOrderBtn);
 		header.add(Box.createVerticalStrut(4));
 
 		// Checkboxes in 2x2 grid
@@ -157,15 +162,16 @@ public class BankScannerPanel extends PluginPanel
 		showHaCheck.addActionListener(e -> refreshList());
 		checkGrid.add(showHaCheck);
 
-		styleCheck(hideUntradeablesCheck);
-		hideUntradeablesCheck.addActionListener(e -> refreshList());
-		checkGrid.add(hideUntradeablesCheck);
+		styleCheck(onlyUntradeableCheck);
+		onlyUntradeableCheck.addActionListener(e -> refreshList());
+		checkGrid.add(onlyUntradeableCheck);
 
 		header.add(checkGrid);
 		header.add(Box.createVerticalStrut(6));
 
 		JButton refreshBtn = new JButton("Rescan Bank");
 		refreshBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+		refreshBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
 		refreshBtn.addActionListener(e ->
 		{
 			if (onRescan != null)
@@ -224,12 +230,12 @@ public class BankScannerPanel extends PluginPanel
 		String search = searchField.getText().trim().toLowerCase();
 		int minQty = parseIntSafe(minQtyField.getText(), 0);
 		int minPrice = parseIntSafe(minPriceField.getText(), 0);
-		boolean asc = changeOrderCheck.isSelected();
+		boolean asc = sortAscending;
 		SortMode mode = (SortMode) sortCombo.getSelectedItem();
 		boolean membersOnly = membersOnlyCheck.isSelected();
 		boolean tradeableOnly = tradeableOnlyCheck.isSelected();
 		boolean showHa = showHaCheck.isSelected();
-		boolean hideUntradeables = hideUntradeablesCheck.isSelected();
+		boolean onlyUntradeable = onlyUntradeableCheck.isSelected();
 
 		List<BankItem> filtered = allItems.stream()
 			.filter(i -> !config.hidePlaceholders() || !i.isPlaceholder())
@@ -238,7 +244,7 @@ public class BankScannerPanel extends PluginPanel
 			.filter(i -> i.getGePrice() >= minPrice)
 			.filter(i -> !membersOnly || i.isMembers())
 			.filter(i -> !tradeableOnly || i.isTradeable())
-			.filter(i -> !hideUntradeables || i.isTradeable())
+			.filter(i -> !onlyUntradeable || !i.isTradeable())
 			.collect(Collectors.toList());
 
 		Comparator<BankItem> cmp;
